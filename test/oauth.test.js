@@ -74,6 +74,8 @@ async function fixture(t) {
     if (!grant) return reply(401, {});
     if (req.url === '/oauth/me')
       return reply(200, {
+        company: 'Harbor Studio',
+        email: 'lee@example.test',
         subscription_id: 41,
         user_id: 8,
         connection_id: String(grant.id),
@@ -110,7 +112,7 @@ async function fixture(t) {
     await rm(dir, { recursive: true, force: true });
   });
   function run(args, options = {}, input = '') {
-    const p = spawn(process.execPath, [binary, ...args, '--json'], {
+    const p = spawn(process.execPath, [binary, ...args], {
       env: { PATH: process.env.PATH, XDG_CONFIG_HOME: dir, TICK_BASE_URL: base, ...options },
     });
     let stdout = '',
@@ -175,12 +177,12 @@ async function fixture(t) {
       p.kill();
     }
   }
-  return { state, base, profile, run: (args, env, input) => run(args, env, input).done, login };
+  return { state, base, profile, run: (args, env, input) => run([...args, '--json'], env, input).done, login };
 }
 
 test('browser login, grant identity, rotated credentials, pinned session, and revocation', async (t) => {
   const f = await fixture(t);
-  const login = await f.login();
+  const login = await f.login(['--json']);
   assert.equal(login.code, 0, login.stderr);
   assert.deepEqual(JSON.parse(login.stdout), {
     signed_in: true,
@@ -216,6 +218,14 @@ test('browser login, grant identity, rotated credentials, pinned session, and re
   await assert.rejects(stat(f.profile), { code: 'ENOENT' });
 });
 
+test('browser login confirms the selected company and email', async (t) => {
+  const f = await fixture(t);
+  const result = await f.login();
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout, 'You are now logged into the Harbor Studio account as lee@example.test.\n');
+  assert.doesNotMatch(await readFile(f.profile, 'utf8'), /Harbor Studio|lee@example\.test/);
+});
+
 test('declined consent preserves the previous profile', async (t) => {
   const f = await fixture(t);
   assert.equal((await f.login()).code, 0);
@@ -233,7 +243,7 @@ test('an unattended callback closes after the deadline', async () => {
 test('consent can grant read access when the CLI requested writes', async (t) => {
   const f = await fixture(t);
   f.state.narrow = true;
-  const login = await f.login(['--allow-writes']);
+  const login = await f.login(['--allow-writes', '--json']);
   assert.equal(login.code, 0, login.stderr);
   assert.equal(JSON.parse(login.stdout).scope, 'read');
   const write = await f.run(['timers', 'pause', '1']);
@@ -319,7 +329,7 @@ test('replacement preserves a malformed or unreadable profile and reports how to
 test('account changes follow the current role on the same browser login', async (t) => {
   const f = await fixture(t);
   const create = ['clients', 'create', '--name', 'Studio'];
-  const login = await f.login();
+  const login = await f.login(['--json']);
   assert.equal(login.code, 0, login.stderr);
   assert.equal(JSON.parse(login.stdout).scope, 'read');
   let client = await f.run(create);

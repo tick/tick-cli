@@ -315,7 +315,9 @@ test('login selects an account, scopes the saved credential and never prints rol
   assert.equal(missing.code, 'select_account');
   assert.equal(missing.accounts.length, 2);
   assert.doesNotMatch(JSON.stringify(missing), /fixture-token|alt-secret|test-password/);
-  assert.equal(ok(await cli(env, [...args, '--subscription-id', '42'], 'test-password')).user_id, 7);
+  assert.deepEqual(ok(await cli(env, [...args, '--subscription-id', '42'], 'test-password')), {
+    subscription_id: 42, user_id: 7, company: 'Studio', signed_in: true,
+  });
   const file = join(f.dir, 'tick', 'account.json');
   assert.equal((await stat(file)).mode & 0o777, 0o600);
   assert.doesNotMatch(await readFile(file, 'utf8'), /test-password/);
@@ -324,6 +326,23 @@ test('login selects an account, scopes the saved credential and never prints rol
   assert.equal(wrong.code, 'configuration');
   ok(await cli(env, ['logout', '--json']));
   assert.equal(bad(await cli(env, ['account', '--json'])).code, 'configuration');
+});
+test('token login uses the current identity in the greeting and handles older servers', async (t) => {
+  const f = await fixture(t);
+  const env = { XDG_CONFIG_HOME: f.dir, TICK_BASE_URL: f.env.TICK_BASE_URL };
+  const args = ['login', '--subscription-id', '42', '--token-stdin'];
+  f.setMe({ id: 7, company: 'North\nStudio', email: 'ana@local.test' });
+  const result = await cli(env, args, token);
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout, 'You are now logged into the North Studio account as ana@local.test.\n');
+  assert.deepEqual(ok(await cli(env, [...args, '--json'], token)), {
+    subscription_id: 42, user_id: 7, signed_in: true,
+  });
+  assert.doesNotMatch(await readFile(join(f.dir, 'tick', 'account.json'), 'utf8'), /Studio|ana@/);
+  f.setMe({ id: 7 });
+  const legacy = await cli(env, args, token);
+  assert.equal(legacy.code, 0, legacy.stderr);
+  assert.equal(legacy.stdout, 'You are now logged into Tick.\n');
 });
 test('older servers with ambiguous admin identity, HTTPS errors and redirects fail closed', async (t) => {
   const f = await fixture(t);
@@ -397,7 +416,9 @@ test('an older server can verify a saved email login for an empty week', async (
   f.users.push({ id: 8, first_name: 'Sam', email: 'sam@local.test' });
   f.entries.length = 0;
   const profile = { XDG_CONFIG_HOME: f.dir, TICK_BASE_URL: f.env.TICK_BASE_URL };
-  ok(await cli(profile, ['login', '--email', 'ana@local.test', '--subscription-id', '42', '--password-stdin', '--json'], 'password'));
+  const result = await cli(profile, ['login', '--email', 'ana@local.test', '--subscription-id', '42', '--password-stdin'], 'password');
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout, 'You are now logged into the Studio account as ana@local.test.\n');
   const args = ['call', 'log_time', '--json'];
   const input = JSON.stringify({ task_id: 9, duration: '45m' });
   assert.equal(bad(await cli({ ...f.env, TICK_USER_ID: '8' }, args, input)).code, 'identity_required');

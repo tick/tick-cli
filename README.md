@@ -14,10 +14,12 @@ Run `tick --version` to check the installation. Repeat the install command to up
 
 ## Connect a Tick account
 
-```sh
-tick login
-tick account
+```console
+$ tick login
+You are now logged into the Harbor Studio account as lee@example.test.
 ```
+
+Use `tick login --json` for machine-readable output.
 
 Browser login requires a Tick server with the OAuth provider deployed. On an older server, use the existing API token login described below.
 

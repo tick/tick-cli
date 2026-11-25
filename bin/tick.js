@@ -189,6 +189,14 @@ async function secret(name, fromStdin) {
     process.stderr.write('\n');
   }
 }
+function showLogin(result, company, email) {
+  if (json) return show(result);
+  const name = typeof company === 'string' && display(company).trim();
+  const address = typeof email === 'string' && display(email).trim();
+  const account = name ? `the ${name} account` : 'Tick';
+  console.log(`You are now logged into ${account}${address ? ' as ' + address : ''}.`);
+}
+
 async function login(args) {
   const options = {
     'no-browser': { type: 'boolean' },
@@ -212,16 +220,15 @@ async function login(args) {
     usage('--no-browser and --allow-writes apply to browser login.');
   if (!legacy) {
     await printWordmark(process.stderr, true);
-    const account = await browserLogin(base, {
+    const { account, company, email } = await browserLogin(base, {
       noBrowser: v['no-browser'], allowWrites: v['allow-writes'],
     });
     await saveAccount(account);
-    return show({
-      signed_in: true,
-      subscription_id: account.subscriptionId,
-      user_id: account.userId,
-      scope: account.scope,
-    });
+    return showLogin(
+      { signed_in: true, subscription_id: account.subscriptionId, user_id: account.userId, scope: account.scope },
+      company,
+      email
+    );
   }
   let sub = v['subscription-id'] ? positiveId(v['subscription-id'], 'subscription id') : undefined;
   let token, company;
@@ -257,12 +264,11 @@ async function login(args) {
   const user = await identity(account, api(account));
   if (user) account.userId = positiveId(user.id, 'user id');
   await saveAccount(account);
-  show({
-    subscription_id: sub,
-    user_id: account.userId ?? null,
-    ...(company && { company }),
-    signed_in: true,
-  });
+  showLogin(
+    { subscription_id: sub, user_id: account.userId ?? null, ...(company && { company }), signed_in: true },
+    user?.company || company,
+    user?.email || v.email
+  );
 }
 async function main() {
   if (argv.length === 1 && ['--version', 'version'].includes(argv[0])) {
